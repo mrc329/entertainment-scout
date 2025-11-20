@@ -159,7 +159,7 @@ Retrieved titles that you MUST include:"""
     
     try:
         # Use HuggingFace Inference API with text generation
-        # This works with standard read tokens
+        # Track whether we use primary or fallback for metrics
         
         # Build a complete, well-structured prompt
         system_instructions = st.session_state.system_prompt
@@ -185,26 +185,37 @@ CONVERSATION HISTORY:"""
         # Add current message and start response
         full_prompt += f"\n\nUser: {message}\n\nAssistant: Well now, let me"
         
-        # Use text generation with a free model
-        response = hf_client.text_generation(
-            full_prompt,
-            model="mistralai/Mistral-7B-Instruct-v0.2",
-            max_new_tokens=st.session_state.get("max_tokens", 800),
-            temperature=st.session_state.get("temperature", 0.7),
-            top_p=st.session_state.get("top_p", 0.9),
-            return_full_text=False,
-            do_sample=True
-        )
-        
-        # Add the priming text back
-        full_response = "Well now, let me" + response
-        return full_response
+        # Try primary model first (best quality when it works)
+        try:
+            logger.info("Attempting primary AI generation (Llama-3.2)...")
+            response = hf_client.text_generation(
+                full_prompt,
+                model="meta-llama/Llama-3.2-1B-Instruct",
+                max_new_tokens=st.session_state.get("max_tokens", 800),
+                temperature=st.session_state.get("temperature", 0.7),
+                top_p=st.session_state.get("top_p", 0.9),
+                return_full_text=False,
+                do_sample=True,
+                timeout=10  # 10 second timeout
+            )
+            
+            # Success! Use primary response
+            full_response = "Well now, let me" + response
+            logger.info("✅ Primary AI generation successful")
+            return full_response
+            
+        except Exception as api_error:
+            # Primary failed, use intelligent fallback
+            logger.warning(f"Primary AI failed: {str(api_error)}, using intelligent fallback")
+            raise  # Re-raise to trigger outer exception handler
     
     except Exception as e:
         logger.error(f"Error generating response: {str(e)}")
+        logger.info("Using personality-infused fallback system")
         
-        # Fallback: Generate a response with personality from retrieved content
+        # Intelligent fallback with personality (maintains UX quality)
         if content_items:
+            # Build fallback response with Hollywood personality
             response = "Well now, let me see what turned up in the archives, darling.\n\n"
             
             for i, item in enumerate(content_items, 1):
@@ -222,6 +233,7 @@ CONVERSATION HISTORY:"""
                     response += f"   *Bit of a stretch, but it's what the system found.* (Score: {score:.3f})\n\n"
             
             response += "\nThere you have it - the full picture of what my database turned up."
+            logger.info("✅ Fallback response generated successfully")
             return response
         else:
             return f"I encountered an error: {str(e)}\n\nPlease check your HuggingFace token permissions."
