@@ -107,6 +107,10 @@ def query_pinecone(query_text: str, top_k: int = 5, min_score: float = 0.25) -> 
                 seen_titles.add(title)
                 unique_matches.append(match)
         
+        # Log warning if all scores are low
+        if unique_matches and all(m['score'] < 0.4 for m in unique_matches):
+            logger.warning(f"All matches have low scores (< 0.4) for query: '{query_text}'")
+        
         return unique_matches[:top_k]
     
     except Exception as e:
@@ -128,15 +132,18 @@ def generate_response(message: str, history: List[Dict], content_items: List[Dic
 **Note:** My database has 500+ titles, but coverage is limited. This is a portfolio demo showing RAG architecture with realistic constraints."""
     
     # Build context from retrieved content
-    context = f"""You must recommend ONLY these {len(content_items)} titles. Do not mention any other shows or movies.
+    context = f"""MANDATORY: You MUST discuss ALL {len(content_items)} of these titles in your response.
+Do not skip any. Do not pick favorites. Discuss EVERY SINGLE ONE.
 
-Available titles:"""
+Retrieved titles that you MUST include:"""
     
     for i, item in enumerate(content_items, 1):
-        context += f"\n{i}. {item['title']} ({item['year']}) - {item['genre']}"
-        context += f"\n   Plot: {item['overview'][:100]}..."
+        context += f"\n{i}. **{item['title']}** ({item['year']})"
+        context += f"\n   - Genre: {item['genre']}"
+        context += f"\n   - Plot: {item['overview'][:150]}..."
+        context += f"\n   - Match Score: {item['score']:.3f}"
     
-    context += "\n\nREMINDER: Only recommend from the list above."
+    context += f"\n\nREMINDER: Your response MUST mention all {len(content_items)} titles above. List them one by one."
     
     # Build messages
     messages = [
@@ -151,19 +158,49 @@ Available titles:"""
     messages.append({"role": "user", "content": message})
     
     try:
-        response = hf_client.chat_completion(
-            messages,
-            model="HuggingFaceH4/zephyr-7b-beta",
-            max_tokens=st.session_state.get("max_tokens", 1024),
+        # Use HuggingFace Inference API with text generation
+        # This works with standard read tokens
+        
+        # Format as a single prompt for text generation
+        prompt = context + "\n\n" + st.session_state.system_prompt + "\n\n"
+        
+        # Add conversation history
+        for msg in history[-3:]:  # Last 3 exchanges to keep it concise
+            role = msg["role"]
+            content = msg["content"]
+            if role == "user":
+                prompt += f"User: {content}\n"
+            elif role == "assistant":
+                prompt += f"Assistant: {content}\n"
+        
+        # Add current message
+        prompt += f"User: {message}\nAssistant:"
+        
+        # Use text generation with a free model
+        response = hf_client.text_generation(
+            prompt,
+            model="mistralai/Mistral-7B-Instruct-v0.2",
+            max_new_tokens=st.session_state.get("max_tokens", 512),
             temperature=st.session_state.get("temperature", 0.7),
-            top_p=st.session_state.get("top_p", 0.9)
+            top_p=st.session_state.get("top_p", 0.9),
+            return_full_text=False
         )
         
-        return response.choices[0].message.content
+        return response
     
     except Exception as e:
         logger.error(f"Error generating response: {str(e)}")
-        return f"Sorry, I encountered an error: {str(e)}"
+        
+        # Fallback: Generate a simple response from retrieved content
+        if content_items:
+            response = f"Based on your query, I found these recommendations:\n\n"
+            for i, item in enumerate(content_items[:3], 1):
+                response += f"{i}. **{item['title']}** ({item['year']})\n"
+                response += f"   Genre: {item['genre']}\n"
+                response += f"   {item['overview'][:150]}...\n\n"
+            return response
+        else:
+            return f"I encountered an error: {str(e)}\n\nPlease check your HuggingFace token permissions."
 
 
 # ==================== SESSION STATE ====================
@@ -175,16 +212,24 @@ if "messages" not in st.session_state:
 if "retrieved_content" not in st.session_state:
     st.session_state.retrieved_content = []
 
+if "example_query" not in st.session_state:
+    st.session_state.example_query = None
+
 if "system_prompt" not in st.session_state:
-    st.session_state.system_prompt = """You're a chain-smoking movie and television connoisseur from Hollywood's golden age, a walking encyclopedia of cinema. You speak with a Mid-Atlantic accent, dripping with old-school charm and wit.
+    st.session_state.system_prompt = """You're a movie and TV expert providing recommendations.
 
-RESPONSE FORMAT:
-1. Open with a witty introduction
-2. For EACH recommendation: Title (Year) - Genre - Brief description
-3. Include key cast where relevant
-4. Close with a charming remark
+CRITICAL RULES:
+1. You MUST recommend ALL titles from the provided list
+2. For EACH title, include: Title (Year) - Genre - Brief description  
+3. If a title doesn't match the query well, say "This one's a stretch, but..."
+4. Do NOT make up emotions in parentheses like "(Excitedly)"
+5. Do NOT add fake dialogue
+6. Stick to factual descriptions of the titles provided
 
-CRITICAL: Only recommend titles from the provided list."""
+FORMAT:
+- Start: "Based on your query, here are my recommendations:"
+- List ALL titles with descriptions
+- End: Brief closing remark"""
 
 if "max_tokens" not in st.session_state:
     st.session_state.max_tokens = 1024
@@ -253,9 +298,9 @@ with st.sidebar:
     ]
     
     for query in example_queries:
-        if st.button(query, use_container_width=True):
-            # Add to messages and rerun
-            st.session_state.messages.append({"role": "user", "content": query})
+        if st.button(query, use_container_width=True, key=f"example_{query}"):
+            # Clear any existing input
+            st.session_state.example_query = query
             st.rerun()
 
 # ==================== MAIN CONTENT ====================
@@ -287,6 +332,35 @@ if st.session_state.retrieved_content:
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+
+# Handle example query button clicks
+if "example_query" in st.session_state and st.session_state.example_query:
+    prompt = st.session_state.example_query
+    st.session_state.example_query = None  # Clear it
+    
+    # Add user message to chat
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    
+    # Display user message
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    
+    # Generate response
+    with st.chat_message("assistant"):
+        with st.spinner("Searching database..."):
+            # Query Pinecone
+            retrieved = query_pinecone(prompt, top_k=5)
+            st.session_state.retrieved_content = retrieved
+        
+        with st.spinner("Generating response..."):
+            # Generate response
+            response = generate_response(prompt, st.session_state.messages[:-1], retrieved)
+        
+        st.markdown(response)
+    
+    # Add assistant message to chat
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    st.rerun()
 
 # Chat input
 if prompt := st.chat_input("Try: 'I like Game of Thrones' or 'Show me musicals'"):
