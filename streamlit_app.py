@@ -380,6 +380,12 @@ with st.expander("📊 About This Demo", expanded=False):
     
     *Portfolio project demonstrating RAG architecture with semantic search.*
     """)
+    
+    # Debug: Add cache clear button
+    if st.button("🔄 Clear Cache"):
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        st.rerun()
 
 # Display retrieved content if available
 if st.session_state.retrieved_content:
