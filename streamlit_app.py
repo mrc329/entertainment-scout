@@ -186,41 +186,45 @@ CONVERSATION HISTORY:"""
         full_prompt += f"\n\nUser: {message}\n\nAssistant: Well now, let me"
         
         # Try primary model first (best quality when it works)
-        # Using models available on HF Serverless (no provider conflicts)
+        # Use chat completions API which works better with HF Pro
         try:
-            logger.info("Attempting primary AI generation (Meta-Llama-3.1)...")
+            logger.info("Attempting primary AI generation (Llama-3.1 via chat API)...")
             
-            # Build well-structured prompt
-            full_prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-
-{st.session_state.system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>
-
-RETRIEVED CONTENT YOU MUST DISCUSS:
+            # Format as chat messages
+            messages = [
+                {
+                    "role": "system",
+                    "content": st.session_state.system_prompt
+                },
+                {
+                    "role": "user", 
+                    "content": f"""RETRIEVED CONTENT YOU MUST DISCUSS:
 {context}
 
 User Query: {message}
 
-Remember: Discuss ALL {len(content_items)} titles with your Hollywood personality.<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-
-Well now,"""
+Remember: Discuss ALL {len(content_items)} titles with your Hollywood personality."""
+                }
+            ]
             
             # Create fresh client to avoid provider caching issues
             from huggingface_hub import InferenceClient
             client = InferenceClient(token=st.secrets.get("HF_TOKEN", os.getenv("HF_TOKEN")))
             
-            response = client.text_generation(
-                full_prompt,
-                model="meta-llama/Llama-3.1-8B-Instruct",  # Reliable on serverless
-                max_new_tokens=st.session_state.get("max_tokens", 700),
-                temperature=st.session_state.get("temperature", 0.7),
-                top_p=st.session_state.get("top_p", 0.9),
-                return_full_text=False
+            # Use chat completions (works with Pro tier)
+            response = client.chat_completion(
+                messages=messages,
+                model="meta-llama/Llama-3.1-8B-Instruct",
+                max_tokens=st.session_state.get("max_tokens", 700),
+                temperature=st.session_state.get("temperature", 0.7)
             )
             
+            # Extract response text
+            response_text = response.choices[0].message.content
+            
             # Success! Use primary response
-            full_response = "Well now," + response
-            logger.info("✅ Primary AI generation successful (Llama-3.1-8B)")
-            return full_response
+            logger.info("✅ Primary AI generation successful (Llama-3.1 chat API)")
+            return response_text
             
         except Exception as api_error:
             # Primary failed, use intelligent fallback
