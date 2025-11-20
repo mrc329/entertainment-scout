@@ -186,22 +186,34 @@ CONVERSATION HISTORY:"""
         full_prompt += f"\n\nUser: {message}\n\nAssistant: Well now, let me"
         
         # Try primary model first (best quality when it works)
+        # With HF Pro, we have access to better models and no rate limits!
         try:
-            logger.info("Attempting primary AI generation (Llama-3.2)...")
+            logger.info("Attempting primary AI generation (Mixtral-8x7B)...")
+            
+            # Build well-structured prompt for instruction-following model
+            full_prompt = f"""<s>[INST] {st.session_state.system_prompt}
+
+RETRIEVED CONTENT YOU MUST DISCUSS:
+{context}
+
+User Query: {message}
+
+Remember: Discuss ALL {len(content_items)} titles with your Hollywood personality. [/INST]
+
+Well now,"""
+            
             response = hf_client.text_generation(
                 full_prompt,
-                model="meta-llama/Llama-3.2-1B-Instruct",
+                model="mistralai/Mixtral-8x7B-Instruct-v0.1",  # Premium model for HF Pro
                 max_new_tokens=st.session_state.get("max_tokens", 800),
                 temperature=st.session_state.get("temperature", 0.7),
                 top_p=st.session_state.get("top_p", 0.9),
-                return_full_text=False,
-                do_sample=True,
-                timeout=10  # 10 second timeout
+                return_full_text=False
             )
             
             # Success! Use primary response
-            full_response = "Well now, let me" + response
-            logger.info("✅ Primary AI generation successful")
+            full_response = "Well now," + response
+            logger.info("✅ Primary AI generation successful (Mixtral-8x7B)")
             return full_response
             
         except Exception as api_error:
