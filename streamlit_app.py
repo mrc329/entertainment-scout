@@ -186,34 +186,40 @@ CONVERSATION HISTORY:"""
         full_prompt += f"\n\nUser: {message}\n\nAssistant: Well now, let me"
         
         # Try primary model first (best quality when it works)
-        # With HF Pro, we have access to better models and no rate limits!
+        # Using models available on HF Serverless (no provider conflicts)
         try:
-            logger.info("Attempting primary AI generation (Mixtral-8x7B)...")
+            logger.info("Attempting primary AI generation (Meta-Llama-3.1)...")
             
-            # Build well-structured prompt for instruction-following model
-            full_prompt = f"""<s>[INST] {st.session_state.system_prompt}
+            # Build well-structured prompt
+            full_prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+{st.session_state.system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>
 
 RETRIEVED CONTENT YOU MUST DISCUSS:
 {context}
 
 User Query: {message}
 
-Remember: Discuss ALL {len(content_items)} titles with your Hollywood personality. [/INST]
+Remember: Discuss ALL {len(content_items)} titles with your Hollywood personality.<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
 Well now,"""
             
-            response = hf_client.text_generation(
+            # Create fresh client to avoid provider caching issues
+            from huggingface_hub import InferenceClient
+            client = InferenceClient(token=st.secrets.get("HF_TOKEN", os.getenv("HF_TOKEN")))
+            
+            response = client.text_generation(
                 full_prompt,
-                model="mistralai/Mixtral-8x7B-Instruct-v0.1",  # Premium model for HF Pro
-                max_new_tokens=st.session_state.get("max_tokens", 800),
+                model="meta-llama/Llama-3.1-8B-Instruct",  # Reliable on serverless
+                max_new_tokens=st.session_state.get("max_tokens", 700),
                 temperature=st.session_state.get("temperature", 0.7),
-                top_p=st.session_state.get("top_p", 0.9),
+                top_p=st.session_state.get("top_p", 0.9"),
                 return_full_text=False
             )
             
             # Success! Use primary response
             full_response = "Well now," + response
-            logger.info("✅ Primary AI generation successful (Mixtral-8x7B)")
+            logger.info("✅ Primary AI generation successful (Llama-3.1-8B)")
             return full_response
             
         except Exception as api_error:
