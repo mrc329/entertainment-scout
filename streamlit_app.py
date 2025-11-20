@@ -224,6 +224,7 @@ Remember: Discuss ALL {len(content_items)} titles with your Hollywood personalit
             
             # Success! Use primary response
             logger.info("✅ Primary AI generation successful (Llama-3.1 chat API)")
+            logger.info(f"AI Response preview: {response_text[:200]}...")  # Debug: see what we got
             return response_text
             
         except Exception as api_error:
