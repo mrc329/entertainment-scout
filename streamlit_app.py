@@ -161,43 +161,67 @@ Retrieved titles that you MUST include:"""
         # Use HuggingFace Inference API with text generation
         # This works with standard read tokens
         
-        # Format as a single prompt for text generation
-        prompt = context + "\n\n" + st.session_state.system_prompt + "\n\n"
+        # Build a complete, well-structured prompt
+        system_instructions = st.session_state.system_prompt
+        
+        # Format the prompt with clear sections
+        full_prompt = f"""SYSTEM INSTRUCTIONS:
+{system_instructions}
+
+RETRIEVED CONTENT YOU MUST USE:
+{context}
+
+CONVERSATION HISTORY:"""
         
         # Add conversation history
         for msg in history[-3:]:  # Last 3 exchanges to keep it concise
             role = msg["role"]
             content = msg["content"]
             if role == "user":
-                prompt += f"User: {content}\n"
+                full_prompt += f"\nUser: {content}"
             elif role == "assistant":
-                prompt += f"Assistant: {content}\n"
+                full_prompt += f"\nAssistant: {content}"
         
-        # Add current message
-        prompt += f"User: {message}\nAssistant:"
+        # Add current message and start response
+        full_prompt += f"\n\nUser: {message}\n\nAssistant: Well now, let me"
         
         # Use text generation with a free model
         response = hf_client.text_generation(
-            prompt,
+            full_prompt,
             model="mistralai/Mistral-7B-Instruct-v0.2",
-            max_new_tokens=st.session_state.get("max_tokens", 512),
+            max_new_tokens=st.session_state.get("max_tokens", 800),
             temperature=st.session_state.get("temperature", 0.7),
             top_p=st.session_state.get("top_p", 0.9),
-            return_full_text=False
+            return_full_text=False,
+            do_sample=True
         )
         
-        return response
+        # Add the priming text back
+        full_response = "Well now, let me" + response
+        return full_response
     
     except Exception as e:
         logger.error(f"Error generating response: {str(e)}")
         
-        # Fallback: Generate a simple response from retrieved content
+        # Fallback: Generate a response with personality from retrieved content
         if content_items:
-            response = f"Based on your query, I found these recommendations:\n\n"
-            for i, item in enumerate(content_items[:3], 1):
-                response += f"{i}. **{item['title']}** ({item['year']})\n"
-                response += f"   Genre: {item['genre']}\n"
-                response += f"   {item['overview'][:150]}...\n\n"
+            response = "Well now, let me see what turned up in the archives, darling.\n\n"
+            
+            for i, item in enumerate(content_items, 1):
+                response += f"**{i}. {item['title']}** ({item['year']}) - {item['genre']}\n"
+                overview = item['overview'][:150] + "..." if len(item['overview']) > 150 else item['overview']
+                response += f"   {overview}\n"
+                
+                # Add personality based on score
+                score = item.get('score', 0)
+                if score > 0.6:
+                    response += f"   *Now we're talking! Strong match here, sweetheart.* (Score: {score:.3f})\n\n"
+                elif score > 0.4:
+                    response += f"   *A decent fit, I'd say.* (Score: {score:.3f})\n\n"
+                else:
+                    response += f"   *Bit of a stretch, but it's what the system found.* (Score: {score:.3f})\n\n"
+            
+            response += "\nThere you have it - the full picture of what my database turned up."
             return response
         else:
             return f"I encountered an error: {str(e)}\n\nPlease check your HuggingFace token permissions."
