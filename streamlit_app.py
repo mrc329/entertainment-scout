@@ -213,7 +213,7 @@ Well now,"""
                 model="meta-llama/Llama-3.1-8B-Instruct",  # Reliable on serverless
                 max_new_tokens=st.session_state.get("max_tokens", 700),
                 temperature=st.session_state.get("temperature", 0.7),
-                top_p=st.session_state.get("top_p", 0.9"),
+                top_p=st.session_state.get("top_p", 0.9),
                 return_full_text=False
             )
             
