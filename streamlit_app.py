@@ -387,16 +387,17 @@ with st.expander("📊 About This Demo", expanded=False):
         st.cache_resource.clear()
         st.rerun()
 
-# Display retrieved content if available
+# Display retrieved content in sidebar
 if st.session_state.retrieved_content:
     with st.sidebar:
-        st.markdown("### 🎯 Retrieved Titles")
+        st.markdown("---")
+        st.markdown("### 🎯 Last Retrieved")
         for i, item in enumerate(st.session_state.retrieved_content, 1):
             st.markdown(f"**{i}. {item['title']}** ({item['year']})")
-            st.markdown(f"*{item['genre']} | Score: {item['score']:.3f}*")
-            st.markdown("---")
+            st.markdown(f"*Score: {item['score']:.3f}*")
+        st.markdown("---")
 
-# Display chat messages
+# Main content area - chat messages
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
