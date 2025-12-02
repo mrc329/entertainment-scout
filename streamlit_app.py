@@ -393,6 +393,7 @@ with st.sidebar:
     if st.session_state.retrieved_content:
         st.markdown("---")
         st.markdown("### 🎯 Last Retrieved")
+        st.markdown(f"*Found {len(st.session_state.retrieved_content)} titles*")
         for i, item in enumerate(st.session_state.retrieved_content, 1):
             st.markdown(f"**{i}. {item['title']}** ({item['year']})")
             st.markdown(f"*Score: {item['score']:.3f}*")
@@ -418,6 +419,12 @@ with st.expander("📊 About This Demo", expanded=False):
         st.cache_data.clear()
         st.cache_resource.clear()
         st.rerun()
+
+# Show retrieved titles in main area too (for visibility)
+if st.session_state.retrieved_content:
+    with st.expander("🎯 Last Retrieved Titles", expanded=False):
+        for i, item in enumerate(st.session_state.retrieved_content, 1):
+            st.markdown(f"**{i}. {item['title']}** ({item['year']}) - Score: {item['score']:.3f}")
 
 # Main content area - chat messages
 for message in st.session_state.messages:
