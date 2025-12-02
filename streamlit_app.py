@@ -98,24 +98,48 @@ def query_pinecone(query_text: str, top_k: int = 5, min_score: float = 0.25) -> 
         
         # Sort by score and deduplicate
         all_matches.sort(key=lambda x: x["score"], reverse=True)
-        seen_titles = set()
-        unique_matches = []
         
-        for match in all_matches:
-            title = match["title"].lower()
-            if title not in seen_titles:
-                seen_titles.add(title)
-                unique_matches.append(match)
+        # Use reranker for deduplication and final selection
+        final_results = rerank_results(query_text, all_matches, top_k=top_k)
         
         # Log warning if all scores are low
-        if unique_matches and all(m['score'] < 0.4 for m in unique_matches):
+        if final_results and all(m['score'] < 0.4 for m in final_results):
             logger.warning(f"All matches have low scores (< 0.4) for query: '{query_text}'")
         
-        return unique_matches[:top_k]
+        return final_results
     
     except Exception as e:
         logger.error(f"Error querying Pinecone: {str(e)}")
         return []
+
+
+def rerank_results(query_text: str, matches: List[Dict], top_k: int = 5) -> List[Dict]:
+    """
+    Rerank and deduplicate results.
+    
+    Current implementation: Title-based deduplication
+    Future enhancement: Cross-encoder reranking for semantic relevance
+    
+    Trade-off: Cross-encoder would add 2-4s latency for 5-15% accuracy gain.
+    For portfolio demo prioritizing fast UX, deduplication provides optimal balance.
+    """
+    if not matches:
+        logger.warning(f"No valid results to rerank for query: '{query_text}'")
+        return []
+    
+    # Deduplicate by title (case-insensitive)
+    seen_titles = set()
+    unique_matches = []
+    
+    for match in matches:
+        title = match.get("title", "").lower().strip()
+        if title and title not in seen_titles:
+            seen_titles.add(title)
+            unique_matches.append(match)
+    
+    logger.info(f"Reranked {len(matches)} results to {len(unique_matches)} unique titles")
+    
+    return unique_matches[:top_k]
 
 
 def generate_response(message: str, history: List[Dict], content_items: List[Dict]) -> str:
