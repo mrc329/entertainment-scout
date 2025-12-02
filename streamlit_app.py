@@ -388,6 +388,14 @@ with st.sidebar:
             # Clear any existing input
             st.session_state.example_query = query
             st.rerun()
+    
+    # Display retrieved content if available
+    if st.session_state.retrieved_content:
+        st.markdown("---")
+        st.markdown("### 🎯 Last Retrieved")
+        for i, item in enumerate(st.session_state.retrieved_content, 1):
+            st.markdown(f"**{i}. {item['title']}** ({item['year']})")
+            st.markdown(f"*Score: {item['score']:.3f}*")
 
 # ==================== MAIN CONTENT ====================
 
@@ -410,16 +418,6 @@ with st.expander("📊 About This Demo", expanded=False):
         st.cache_data.clear()
         st.cache_resource.clear()
         st.rerun()
-
-# Display retrieved content in sidebar
-if st.session_state.retrieved_content:
-    with st.sidebar:
-        st.markdown("---")
-        st.markdown("### 🎯 Last Retrieved")
-        for i, item in enumerate(st.session_state.retrieved_content, 1):
-            st.markdown(f"**{i}. {item['title']}** ({item['year']})")
-            st.markdown(f"*Score: {item['score']:.3f}*")
-        st.markdown("---")
 
 # Main content area - chat messages
 for message in st.session_state.messages:
