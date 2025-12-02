@@ -66,8 +66,12 @@ except Exception as e:
 
 # ==================== QUERY FUNCTIONS ====================
 
-def query_pinecone(query_text: str, top_k: int = 5, min_score: float = 0.25) -> List[Dict]:
+def query_pinecone(query_text: str, top_k: int = 5, min_score: float = None) -> List[Dict]:
     """Query Pinecone and return results."""
+    
+    # Use session state threshold if not provided
+    if min_score is None:
+        min_score = st.session_state.get("min_score", 0.25)
     
     try:
         # 3x emphasis on query (matching indexing strategy)
@@ -326,6 +330,9 @@ if "temperature" not in st.session_state:
 if "top_p" not in st.session_state:
     st.session_state.top_p = 0.9
 
+if "min_score" not in st.session_state:
+    st.session_state.min_score = 0.25  # Default threshold
+
 # ==================== SIDEBAR ====================
 
 with st.sidebar:
@@ -356,6 +363,25 @@ with st.sidebar:
         value=st.session_state.top_p,
         step=0.1
     )
+    
+    st.markdown("---")
+    
+    st.markdown("### Retrieval Settings")
+    
+    st.session_state.min_score = st.slider(
+        "Min Score Threshold",
+        min_value=0.20,
+        max_value=0.50,
+        value=st.session_state.min_score,
+        step=0.05,
+        help="Minimum similarity score for retrieved results. Lower = more results but lower quality."
+    )
+    
+    st.caption(f"Current: {st.session_state.min_score:.2f}")
+    if st.session_state.min_score == 0.25:
+        st.caption("✅ Production default (0.25)")
+    elif st.session_state.min_score >= 0.45:
+        st.caption("⚠️ High threshold - may return no results")
     
     st.markdown("---")
     
@@ -423,6 +449,7 @@ with st.expander("📊 About This Demo", expanded=False):
 # Show retrieved titles in main area too (for visibility)
 if st.session_state.retrieved_content:
     with st.expander("🎯 Last Retrieved Titles", expanded=False):
+        st.caption(f"Retrieved with min_score ≥ {st.session_state.min_score:.2f}")
         for i, item in enumerate(st.session_state.retrieved_content, 1):
             st.markdown(f"**{i}. {item['title']}** ({item['year']}) - Score: {item['score']:.3f}")
 
